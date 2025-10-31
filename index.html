@@ -1,1 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Star Wars Characters</title>
+  <style>
+    :root { --bg:#0f1220; --panel:#171a2b; --text:#e9ecf1; --muted:#9aa3b2; --accent:#ffd54a; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1000px 600px at 20% -10%, #1a1f38 0%, #0f1220 60%, #0b0e1a 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    header {
+      width: 100%; max-width: 900px; padding: 24px 16px 8px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+      justify-content: space-between;
+    }
+    h1 {
+      margin: 0; font-size: 28px; letter-spacing: 0.5px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    h1 .spark { color: var(--accent); }
+    .controls {
+      display: flex; gap: 10px; width: 100%; max-width: 520px;
+    }
+    input[type="search"] {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid #262a44;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      outline: none;
+    }
+    input[type="search"]::placeholder { color: var(--muted); }
+    main {
+      width: 100%; max-width: 900px; padding: 8px 16px 80px;
+    }
+    .status { color: var(--muted); margin: 8px 4px 16px; font-size: 14px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid #272b46;
+      border-radius: 10px;
+      padding: 14px;
+      transition: transform .12s ease, border-color .12s ease;
+    }
+    .card:hover { transform: translateY(-2px); border-color: #39406a; }
+    .name { font-weight: 700; margin-bottom: 6px; }
+    .meta { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .actions {
+      display: flex; gap: 10px; justify-content: center;
+      position: sticky; bottom: 0; padding: 10px; margin-top: 14px;
+      background: linear-gradient(to top, rgba(15,18,32,0.95), rgba(15,18,32,0));
+      backdrop-filter: blur(2px);
+    }
+    button {
+      background: #2a2f52; color: var(--text);
+      border: 1px solid #39406a; border-radius: 10px;
+      padding: 10px 14px; cursor: pointer; min-width: 120px;
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .sr-only {
+      position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>
+      <span aria-hidden="true" class="spark">✦</span>
+      Star Wars Characters
+    </h1>
+    <div class="controls" role="search">
+      <input id="search" type="search" placeholder="Search characters by name…" autocomplete="off" />
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="status">Loading characters…</div>
+    <section id="grid" class="grid" aria-live="polite"></section>
+    <div class="actions">
+      <button id="loadMore" disabled>Load more</button>
+      <button id="reload" style="display:none;">Retry</button>
+    </div>
+  </main>
+
+  <script>
+    const API_START = 'https://swapi.dev/api/people/';
+    const grid = document.getElementById('grid');
+    const statusEl = document.getElementById('status');
+    const loadMoreBtn = document.getElementById('loadMore');
+    const reloadBtn = document.getElementById('reload');
+    const searchInput = document.getElementById('search');
+
+    let allCharacters = [];
+    let filtered = [];
+    let nextUrl = API_START;
+    let loading = false;
+
+    function setStatus(text) { statusEl.textContent = text || ''; }
+
+    function cardTemplate(p) {
+      const fields = [
+        ['Height', p.height !== 'unknown' ? p.height + ' cm' : 'unknown'],
+        ['Mass', p.mass !== 'unknown' ? p.mass + ' kg' : 'unknown'],
+        ['Birth', p.birth_year || 'unknown'],
+        ['Gender', p.gender || 'unknown']
+      ];
+      const meta = fields.map(([k,v]) => `<div><strong>${k}:</strong> <span class="meta-val">${v}</span></div>`).join('');
+      return `
+        <article class="card" tabindex="0" aria-label="${p.name}">
+          <div class="name">${p.name}</div>
+          <div class="meta">${meta}</div>
+        </article>
+      `;
+    }
+
+    function render(list) {
+      grid.innerHTML = list.map(cardTemplate).join('');
+      const total = allCharacters.length;
+      const showing = list.length;
+      const pagesLeft = nextUrl ? 'More available.' : 'All loaded.';
+      setStatus(`${showing} shown${showing !== total ? ` (filtered from ${total})` : ''}. ${pagesLeft}`);
+      loadMoreBtn.disabled = !nextUrl || loading;
+    }
+
+    function applyFilter() {
+      const q = searchInput.value.trim().toLowerCase();
+      filtered = !q ? allCharacters : allCharacters.filter(p => p.name.toLowerCase().includes(q));
+      render(filtered);
+    }
+
+    async function fetchPage(url) {
+      loading = true;
+      loadMoreBtn.disabled = true;
+      reloadBtn.style.display = 'none';
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        const data = await res.json();
+        allCharacters = allCharacters.concat(data.results || []);
+        nextUrl = data.next;
+        applyFilter();
+      } catch (err) {
+        console.error(err);
+        setStatus('Failed to load. Check your connection and retry.');
+        reloadBtn.style.display = 'inline-block';
+      } finally {
+        loading = false;
+        loadMoreBtn.disabled = !nextUrl || loading;
+      }
+    }
+
+    loadMoreBtn.addEventListener('click', () => {
+      if (loading || !nextUrl) return;
+      setStatus('Loading more…');
+      fetchPage(nextUrl);
+    });
+
+    reloadBtn.addEventListener('click', () => {
+      setStatus('Retrying…');
+      if (!allCharacters.length) {
+        nextUrl = API_START;
+      }
+      fetchPage(nextUrl || API_START);
+    });
+
+    searchInput.addEventListener('input', () => {
+      applyFilter();
+    });
+
+    // Initial load
+    fetchPage(nextUrl);
+  </script>
+</body>
+</html>
 
